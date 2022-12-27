@@ -8,8 +8,6 @@ NIGHTLY            ?= 0
 AUTOMATION         ?= 0
 # Build for all bootstraps or not
 ALL_BOOTSTRAPS     ?= 0
-# Build with /private/preboot/procursus in mind 
-PREBOOT            ?= 0
 
 TARGET_CODESIGN = $(shell which ldid)
 
@@ -17,30 +15,30 @@ SILEOTMP = $(TMPDIR)/sileo
 SILEO_STAGE_DIR = $(SILEOTMP)/stage
 
 # Platform to build for.
-SILEO_PLATFORM ?= iphoneos-arm64
-ifeq ($(SILEO_PLATFORM),iphoneos-arm64)
+SILEO_PLATFORM ?= iphoneos-arm
+PREFIX ?=
+SEDFIX =
+
+ifeq ($(SILEO_PLATFORM),iphoneos-arm)
 ARCH            = arm64
 PLATFORM        = iphoneos
 DEB_ARCH        = iphoneos-arm
 DESTINATION     =
 CONTENTS        =
-
-BUILD_CONFIG  := Release
-ifneq ($(PREBOOT),1)
-SCHEME = Sileo
-PREFIX          =
-SILEO_APP_DIR = $(SILEOTMP)/Build/Products/Release-iphoneos/Sileo.app
-else
-SCHEME = Sileo-Preboot
-SILEO_APP_DIR = $(SILEOTMP)/Build/Products/Release-iphoneos/Sileo-Preboot.app
-PREFIX          = /private/preboot/procursus
-endif
-
-ifeq ($(ALL_BOOTSTRAPS), 1)
-DEB_DEPENDS     = firmware (>= 12.0), firmware (>= 12.2) | org.swift.libswift (>= 5.0), coreutils (>= 8.31-1), dpkg (>= 1.19.7-2), apt (>= 1.8.2), libzstd1
-else
-DEB_DEPENDS     = firmware (>= 12.0), firmware (>= 12.2) | org.swift.libswift (>= 5.0), coreutils (>= 8.32-4), dpkg (>= 1.20.0), apt (>= 2.3.0), libzstd1
-endif
+SCHEME          = Sileo
+BUILD_CONFIG	= Release
+SILEO_APP_DIR 	= $(SILEOTMP)/Build/Products/Release-iphoneos/Sileo.app
+else ifeq ($(SILEO_PLATFORM),iphoneos-arm64)
+ARCH            = arm64
+PLATFORM        = iphoneos
+DEB_ARCH        = iphoneos-arm64
+DESTINATION     =
+CONTENTS        =
+PREFIX          = /var/jb
+SEDFIX			= "\/var\/jb"
+SCHEME 			= Sileo
+BUILD_CONFIG	= Release
+SILEO_APP_DIR 	= $(SILEOTMP)/Build/Products/Release-iphoneos/Sileo.app
 
 else ifeq ($(SILEO_PLATFORM),darwin-arm64)
 # These trues are temporary
@@ -49,25 +47,11 @@ PLATFORM        = macosx
 DEB_ARCH        = darwin-arm64
 DEB_DEPENDS     = coreutils (>= 8.32-4), dpkg (>= 1.20.0), apt (>= 2.3.0), libzstd1
 PREFIX          = /opt/procursus
+SEDFIX			= "\/opt\/procursus"
 MAC             = 1
 DESTINATION     = -destination "generic/platform=macOS,variant=Mac Catalyst,name=Any Mac"
 CONTENTS        = Contents/
-SCHEME = Sileo
-
-ifneq ($(DEBUG),0)
-BUILD_CONFIG  := Debug
-SILEO_APP_DIR = $(SILEOTMP)/Build/Products/Debug-maccatalyst/Sileo.app
-else
-BUILD_CONFIG  := Release
-SILEO_APP_DIR = $(SILEOTMP)/Build/Products/Release-maccatalyst/Sileo.app
-endif
-
-ifeq ($(AUTOMATION),1)
-BUILD_CONFIG  := Mac_Automations
-SILEO_APP_DIR = $(SILEOTMP)/Build/Products/Mac_Automations-maccatalyst/Sileo.app
-endif
-
-
+SCHEME 			= Sileo
 else ifeq ($(SILEO_PLATFORM),darwin-amd64)
 # These trues are temporary
 ARCH            = x86_64
@@ -75,10 +59,14 @@ PLATFORM        = macosx
 DEB_ARCH        = darwin-amd64
 DEB_DEPENDS     = coreutils (>= 8.32-4), dpkg (>= 1.20.0), apt (>= 2.3.0), libzstd1
 PREFIX          = /opt/procursus
+SEDFIX			= "\/opt\/procursus"
 MAC             = 1
 DESTINATION     = -destination "generic/platform=macOS,variant=Mac Catalyst,name=Any Mac"
 CONTENTS        = Contents/
-SCHEME = Sileo
+SCHEME 			= Sileo
+endif
+
+ifeq ($(PLATFORM),macosx)
 
 ifneq ($(DEBUG),0)
 BUILD_CONFIG  := Debug
@@ -93,8 +81,28 @@ BUILD_CONFIG  := Mac_Automations
 SILEO_APP_DIR = $(SILEOTMP)/Build/Products/Mac_Automations-maccatalyst/Sileo.app
 endif
 
+endif
+
+ifeq ($(PLATFORM),iphoneos-arm)
+ifeq ($(ALL_BOOTSTRAPS), 1)
+DEB_DEPENDS     = firmware (>= 12.2), coreutils (>= 8.31-1), dpkg (>= 1.19.7-2), apt (>= 1.8.2), libzstd1
 else
-$(error Unknown platform $(SILEO_PLATFORM))
+DEB_DEPENDS     = firmware (>= 12.2), coreutils (>= 8.32-4), dpkg (>= 1.20.0), apt (>= 2.3.0), libzstd1
+endif
+endif
+
+ifneq (,$(shell which xcpretty))
+ifeq ($(V),0)
+XCPRETTY := | xcpretty
+endif
+endif
+
+ifeq ($(PLATFORM),iphoneos-arm64)
+ifeq ($(ALL_BOOTSTRAPS), 1)
+DEB_DEPENDS     = firmware (>= 12.2), coreutils (>= 8.31-1), dpkg (>= 1.19.7-2), apt (>= 1.8.2), libzstd1
+else
+DEB_DEPENDS     = firmware (>= 12.2), coreutils (>= 8.32-4), dpkg (>= 1.20.0), apt (>= 2.3.0), libzstd1
+endif
 endif
 
 ifneq (,$(shell which xcpretty))
@@ -167,7 +175,7 @@ endif
 giveMeRoot/bin/giveMeRoot: giveMeRoot/giveMeRoot.c
 	$(MAKE) -C giveMeRoot \
 		CC="xcrun -sdk $(PLATFORM) clang -arch $(ARCH) -mios-version-min=12.0"
-
+		
 ifneq ($(MAC), 1)
 all:: giveMeRoot/bin/giveMeRoot
 else
@@ -176,6 +184,11 @@ endif
 
 ifneq ($(MAC),1)
 stage: all
+	@echo $(BUILD_CONFIG)
+	@echo $(ARCH)
+	@echo $(PLATFORM)
+	@echo $(SILEO_APP_DIR)
+	@echo $(SILEO_STAGE_DIR)/$(PREFIX)/Applications/$(SILEO_APP)
 	@set -o pipefail; \
 		xcodebuild -jobs $(shell sysctl -n hw.ncpu) -project 'Sileo.xcodeproj' -scheme "$(SCHEME)" -configuration $(BUILD_CONFIG) -arch $(ARCH) -sdk $(PLATFORM) -derivedDataPath $(SILEOTMP) \
 		CODE_SIGNING_ALLOWED=NO PRODUCT_BUNDLE_IDENTIFIER=$(PRODUCT_BUNDLE_IDENTIFIER) DISPLAY_NAME=$(DISPLAY_NAME) \
@@ -224,10 +237,11 @@ package: stage
 		-e 's/@@DEB_DEPENDS@@/$(DEB_DEPENDS)/' $(SILEO_STAGE_DIR)/DEBIAN/control.in > $(SILEO_STAGE_DIR)/DEBIAN/control
 	@mv $(SILEO_STAGE_DIR)/DEBIAN/postinst-mac.in $(SILEO_STAGE_DIR)/DEBIAN/postinst
 	@chmod 0755 $(SILEO_STAGE_DIR)/DEBIAN/postinst
-	@rm -f $(SILEO_STAGE_DIR)/DEBIAN/control.in	
+	@rm -f $(SILEO_STAGE_DIR)/DEBIAN/control.in
 	@rm -rf $(SILEO_STAGE_DIR)/DEBIAN/postinst.in
 	@rm -rf $(SILEO_STAGE_DIR)/DEBIAN/postinst-mac.in
 	@rm -rf $(SILEO_STAGE_DIR)/DEBIAN/prerm
+	@rm -rf $(SILEO_STAGE_DIR)/DEBIAN/triggers.in
 	@rm -rf $(SILEO_STAGE_DIR)/$(PREFIX)/Applications/$(SILEO_APP)/Contents/PkgInfo
 	@mv $(SILEO_STAGE_DIR)/DEBIAN/prerm-mac $(SILEO_STAGE_DIR)/DEBIAN/prerm
 	@chmod 0755 $(SILEO_STAGE_DIR)/DEBIAN/prerm
@@ -245,10 +259,13 @@ package: stage
 	@rm -f $(SILEO_STAGE_DIR)/DEBIAN/control.in
 	@sed -e s/@@SILEO_APP@@/$(SILEO_APP)/ \
 		$(SILEO_STAGE_DIR)/DEBIAN/postinst.in > $(SILEO_STAGE_DIR)/DEBIAN/postinst
+	@sed -e s/@@PREFIX@@/$(SEDFIX)/ \
+		$(SILEO_STAGE_DIR)/DEBIAN/triggers.in > $(SILEO_STAGE_DIR)/DEBIAN/triggers
 	@chmod 0755 $(SILEO_STAGE_DIR)/DEBIAN/postinst
 	@rm -f $(SILEO_STAGE_DIR)/DEBIAN/postinst.in
 	@rm -rf $(SILEO_STAGE_DIR)/DEBIAN/postinst-mac.in
 	@rm -rf $(SILEO_STAGE_DIR)/DEBIAN/prerm-mac
+	@rm -rf $(SILEO_STAGE_DIR)/DEBIAN/triggers.in
 	@rm -rf "$(SILEO_STAGE_DIR)/Applications/$(SILEO_APP)/Down_Down.bundle/DownView (macOS).bundle"
 	@mkdir -p ./packages
 	@dpkg-deb -Z$(DPKG_TYPE) --root-owner-group -b $(SILEO_STAGE_DIR) ./packages/$(SILEO_ID)_$(SILEO_VERSION)_$(DEB_ARCH).deb
